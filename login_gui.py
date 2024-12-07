@@ -887,7 +887,7 @@ class LoginApp:
                 FROM Courses c
                 JOIN Enrollment e ON c.CourseID = e.CourseID
                 JOIN Assessments a ON c.CourseID = a.CourseID
-                LEFT JOIN Submissions s ON e.EnrollmentID = s.EnrollmentID
+                LEFT JOIN Submissions s ON e.EnrollmentID = s.EnrollmentID 
                     AND a.AssessmentID = s.AssessmentID
                 WHERE e.StudentID = ?
                 ORDER BY c.CourseName, a.Title
@@ -1152,6 +1152,109 @@ class LoginApp:
                     )
                     submit_btn.pack(pady=5)
                     
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", f"Error loading assessments: {str(e)}")
+        finally:
+            if 'conn' in locals():
+                conn.close()
+                
+    def load_assessments(self, parent_frame):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT c.CourseName, a.Title, a.Description, a.DueDate, a.MaxScore,
+                       CASE 
+                           WHEN s.Score IS NOT NULL THEN s.Score
+                           WHEN DATETIME('now') > a.DueDate THEN 0
+                           ELSE NULL
+                       END as Score,
+                       CASE 
+                           WHEN s.Score IS NOT NULL THEN 'Submitted'
+                           WHEN DATETIME('now') > a.DueDate THEN 'Past Due'
+                           ELSE 'Pending'
+                       END as Status
+                FROM Courses c
+                JOIN Enrollment e ON c.CourseID = e.CourseID
+                JOIN Assessments a ON c.CourseID = a.CourseID
+                LEFT JOIN Submissions s ON e.EnrollmentID = s.EnrollmentID 
+                    AND a.AssessmentID = s.AssessmentID
+                WHERE e.StudentID = ?
+                ORDER BY a.DueDate ASC
+            """, (self.user_id,))
+            
+            assessments = cursor.fetchall()
+            
+            if not assessments:
+                no_assessments_label = ctk.CTkLabel(
+                    parent_frame,
+                    text="No assessments available"
+                )
+                no_assessments_label.pack(pady=20)
+                return
+            
+            # Create headers
+            header_frame = ctk.CTkFrame(parent_frame)
+            header_frame.pack(fill='x', padx=5, pady=(0, 10))
+            
+            headers = ["Course", "Assessment", "Due Date", "Status", "Score/Max"]
+            for header in headers:
+                ctk.CTkLabel(
+                    header_frame,
+                    text=header,
+                    font=("Helvetica", 12, "bold")
+                ).pack(side='left', expand=True, fill='x', padx=5)
+            
+            # Add assessments
+            for assessment in assessments:
+                assessment_frame = ctk.CTkFrame(parent_frame)
+                assessment_frame.pack(fill='x', padx=5, pady=2)
+                
+                # Course name
+                ctk.CTkLabel(
+                    assessment_frame,
+                    text=assessment[0]
+                ).pack(side='left', expand=True, fill='x', padx=5)
+                
+                # Assessment title with tooltip for description
+                title_label = ctk.CTkLabel(
+                    assessment_frame,
+                    text=assessment[1]
+                )
+                title_label.pack(side='left', expand=True, fill='x', padx=5)
+                ToolTip(title_label, assessment[2] if assessment[2] else "No description available")
+                
+                # Due date
+                due_date = datetime.strptime(assessment[3], '%Y-%m-%d %H:%M:%S')
+                formatted_date = due_date.strftime('%Y-%m-%d %H:%M')
+                ctk.CTkLabel(
+                    assessment_frame,
+                    text=formatted_date
+                ).pack(side='left', expand=True, fill='x', padx=5)
+                
+                # Status
+                status_label = ctk.CTkLabel(
+                    assessment_frame,
+                    text=assessment[6]
+                )
+                status_label.pack(side='left', expand=True, fill='x', padx=5)
+                
+                # Color code the status
+                if assessment[6] == 'Submitted':
+                    status_label.configure(text_color='green')
+                elif assessment[6] == 'Past Due':
+                    status_label.configure(text_color='red')
+                else:
+                    status_label.configure(text_color='orange')
+                
+                # Score/Max
+                score_text = f"{assessment[5] if assessment[5] is not None else '-'}/{assessment[4]}"
+                ctk.CTkLabel(
+                    assessment_frame,
+                    text=score_text
+                ).pack(side='left', expand=True, fill='x', padx=5)
+                
         except sqlite3.Error as e:
             messagebox.showerror("Database Error", f"Error loading assessments: {str(e)}")
         finally:
