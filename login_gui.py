@@ -877,50 +877,6 @@ class LoginApp:
             if 'conn' in locals():
                 conn.close()
 
-    def create_assessment(self, course_id):
-        dialog = ctk.CTkToplevel(self.menu_window)
-        dialog.title("Create Assessment")
-        dialog.geometry("500x400")
-        
-        fields = {
-            'Title': ctk.CTkEntry(dialog),
-            'Description': ctk.CTkEntry(dialog),
-            'Due Date': ctk.CTkEntry(dialog),
-            'Max Score': ctk.CTkEntry(dialog)
-        }
-        
-        for field, entry in fields.items():
-            frame = ctk.CTkFrame(dialog)
-            frame.pack(pady=5)
-            ctk.CTkLabel(frame, text=f"{field}:").pack(side='left', padx=5)
-            entry.pack(side='left', padx=5)
-            
-        def save_assessment():
-            try:
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
-                
-                cursor.execute("""
-                    INSERT INTO Assessments (CourseID, Title, Description, DueDate, MaxScore)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (course_id, fields['Title'].get(), fields['Description'].get(),
-                     fields['Due Date'].get(), float(fields['Max Score'].get())))
-                
-                conn.commit()
-                messagebox.showinfo("Success", "Assessment created successfully!")
-                dialog.destroy()
-                
-            except ValueError:
-                messagebox.showerror("Error", "Max Score must be a number!")
-            except sqlite3.Error as e:
-                messagebox.showerror("Database Error", f"Error creating assessment: {str(e)}")
-            finally:
-                if 'conn' in locals():
-                    conn.close()
-                    
-        save_btn = ctk.CTkButton(dialog, text="Create Assessment", command=save_assessment)
-        save_btn.pack(pady=10)
-        
     def load_enrolled_courses(self, parent_frame):
         try:
             conn = sqlite3.connect(self.db_path)
@@ -928,7 +884,7 @@ class LoginApp:
             
             cursor.execute("""
                 SELECT c.CourseID, c.CourseName, i.First_Name, i.Last_Name,
-                       c.Description, p.FinalGrade
+                       c.Description, p.TotalScore, p.Grade
                 FROM Courses c
                 JOIN Enrollment e ON c.CourseID = e.CourseID
                 JOIN Instructors i ON c.InstructorID = i.InstructorID
@@ -959,12 +915,16 @@ class LoginApp:
                 
                 # Grade if available
                 if course[5] is not None:
+                    grade_text = f"Score: {course[5]}"
+                    if course[6]:
+                        grade_text += f" (Grade: {course[6]})"
+                    
                     grade_label = ctk.CTkLabel(
                         course_frame,
-                        text=f"Final Grade: {course[5]}%"
+                        text=grade_text
                     )
                     grade_label.pack(anchor='w')
-                
+                    
         except sqlite3.Error as e:
             messagebox.showerror("Database Error", f"Error loading enrolled courses: {str(e)}")
         finally:
