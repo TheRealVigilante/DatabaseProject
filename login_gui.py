@@ -1115,8 +1115,8 @@ class LoginApp:
                 ).pack(side='left')
                 
                 # Due date with color coding
-                due_date = datetime.strptime(assessment[3], '%Y-%m-%d %H:%M:%S')
-                formatted_date = due_date.strftime('%Y-%m-%d %H:%M')
+                due_date = datetime.strptime(assessment[3], '%Y-%m-%d')
+                formatted_date = due_date.strftime('%Y-%m-%d')
                 today = datetime.now()
                 
                 date_color = "green" if assessment[6] else (
@@ -1160,8 +1160,8 @@ class LoginApp:
                     else:
                         score_label.configure(text_color='red')
                     
-                    submission_date = datetime.strptime(assessment[6], '%Y-%m-%d %H:%M:%S')
-                    formatted_submission = submission_date.strftime('%Y-%m-%d %H:%M')
+                    submission_date = datetime.strptime(assessment[6], '%Y-%m-%d')
+                    formatted_submission = submission_date.strftime('%Y-%m-%d')
                     ctk.CTkLabel(
                         score_frame,
                         text=f"Submitted: {formatted_submission}"
@@ -1242,8 +1242,8 @@ class LoginApp:
                 ToolTip(title_label, assessment[2] if assessment[2] else "No description available")
                 
                 # Due date
-                due_date = datetime.strptime(assessment[3], '%Y-%m-%d %H:%M:%S')
-                formatted_date = due_date.strftime('%Y-%m-%d %H:%M')
+                due_date = datetime.strptime(assessment[3], '%Y-%m-%d')
+                formatted_date = due_date.strftime('%Y-%m-%d')
                 ctk.CTkLabel(
                     assessment_frame,
                     text=formatted_date
