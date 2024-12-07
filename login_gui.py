@@ -486,7 +486,7 @@ class LoginApp:
             
             # Get popular courses
             cursor.execute("""
-                SELECT c.Title, COUNT(e.StudentID) as Enrollment
+                SELECT c.CourseName, COUNT(e.StudentID) as Enrollment
                 FROM Courses c
                 LEFT JOIN Enrollment e ON c.CourseID = e.CourseID
                 GROUP BY c.CourseID
@@ -655,7 +655,7 @@ class LoginApp:
                     return
             
             cursor.execute("""
-                INSERT INTO Courses (Title, Description, Duration, MaxEnrollment, InstructorID)
+                INSERT INTO Courses (CourseName, Description, Duration, MaxEnrollment, InstructorID)
                 VALUES (?, ?, ?, ?, ?)
             """, (entries['Title'].get(), entries['Description'].get(),
                  int(entries['Duration (weeks)'].get()),
@@ -681,7 +681,7 @@ class LoginApp:
             
             # Get courses not enrolled in by the student
             cursor.execute("""
-                SELECT c.CourseID, c.Title, c.Description, i.First_Name, i.Last_Name,
+                SELECT c.CourseID, c.CourseName, c.Description, i.First_Name, i.Last_Name,
                        c.MaxEnrollment, COUNT(e.StudentID) as CurrentEnrollment
                 FROM Courses c
                 LEFT JOIN Enrollment e ON c.CourseID = e.CourseID
@@ -839,7 +839,7 @@ class LoginApp:
             
             # Get popular courses
             cursor.execute("""
-                SELECT c.Title, COUNT(e.StudentID) as Enrollment
+                SELECT c.CourseName, COUNT(e.StudentID) as Enrollment
                 FROM Courses c
                 LEFT JOIN Enrollment e ON c.CourseID = e.CourseID
                 GROUP BY c.CourseID
@@ -927,7 +927,7 @@ class LoginApp:
             cursor = conn.cursor()
             
             cursor.execute("""
-                SELECT c.CourseID, c.Title, i.First_Name, i.Last_Name,
+                SELECT c.CourseID, c.CourseName, i.First_Name, i.Last_Name,
                        c.Description, p.FinalGrade
                 FROM Courses c
                 JOIN Enrollment e ON c.CourseID = e.CourseID
@@ -961,7 +961,7 @@ class LoginApp:
                 if course[5] is not None:
                     grade_label = ctk.CTkLabel(
                         course_frame,
-                        text=f"Grade: {course[5]}%"
+                        text=f"Final Grade: {course[5]}%"
                     )
                     grade_label.pack(anchor='w')
                 
