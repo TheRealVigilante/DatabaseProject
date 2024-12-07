@@ -887,8 +887,8 @@ class LoginApp:
                 FROM Courses c
                 JOIN Enrollment e ON c.CourseID = e.CourseID
                 JOIN Assessments a ON c.CourseID = a.CourseID
-                LEFT JOIN Submissions s ON e.EnrollmentID = s.EnrollmentID 
-                    AND a.AssessmentID = s.AssessmentID
+                LEFT JOIN Submissions s ON s.StudentID = e.StudentID 
+                    AND s.AssessmentID = a.AssessmentID
                 WHERE e.StudentID = ?
                 ORDER BY c.CourseName, a.Title
             """, (self.user_id,))
@@ -934,10 +934,21 @@ class LoginApp:
                 
                 # Score
                 score_text = f"{grade[2]}" if grade[2] is not None else "Not submitted"
-                ctk.CTkLabel(
+                score_label = ctk.CTkLabel(
                     grade_frame,
                     text=score_text
-                ).pack(side='left', expand=True, fill='x', padx=5)
+                )
+                score_label.pack(side='left', expand=True, fill='x', padx=5)
+                
+                # Color code the score
+                if grade[2] is not None:
+                    percentage = (grade[2] / grade[3]) * 100
+                    if percentage >= 90:
+                        score_label.configure(text_color='green')
+                    elif percentage >= 70:
+                        score_label.configure(text_color='orange')
+                    else:
+                        score_label.configure(text_color='red')
                 
                 # Max score
                 ctk.CTkLabel(
