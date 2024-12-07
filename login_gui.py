@@ -263,13 +263,29 @@ class LoginApp:
         enrolled_courses_label = ctk.CTkLabel(courses_frame, text="Enrolled Courses:")
         enrolled_courses_label.pack(pady=5)
         
+        enrolled_frame = ctk.CTkScrollableFrame(courses_frame)
+        enrolled_frame.pack(expand=True, fill='both', padx=10, pady=10)
+        
+        # Load enrolled courses
+        self.load_enrolled_courses(enrolled_frame)
+        
         # Grades Tab
         grades_frame = ctk.CTkFrame(self.notebook)
         self.notebook.add(grades_frame, text="Grades")
         
+        # Create scrollable frame for grades
+        grades_scroll = ctk.CTkScrollableFrame(grades_frame)
+        grades_scroll.pack(expand=True, fill='both', padx=10, pady=10)
+        self.load_student_grades(grades_scroll)
+        
         # Assessments Tab
         assessments_frame = ctk.CTkFrame(self.notebook)
         self.notebook.add(assessments_frame, text="Assessments")
+        
+        # Create scrollable frame for assessments
+        assessments_scroll = ctk.CTkScrollableFrame(assessments_frame)
+        assessments_scroll.pack(expand=True, fill='both', padx=10, pady=10)
+        self.load_student_assessments(assessments_scroll)
         
     def create_profile_view(self, parent_frame):
         fields = ['Phone Number', 'Address', 'Email']
@@ -393,6 +409,572 @@ class LoginApp:
             if 'conn' in locals():
                 conn.close()
                 
+    def add_user(self, user_type, entries):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Validate inputs
+            for field, entry in entries.items():
+                if not entry.get():
+                    messagebox.showerror("Error", f"{field} cannot be empty!")
+                    return
+            
+            table = "Students" if user_type == "Student" else "Instructors"
+            
+            cursor.execute(f"""
+                INSERT INTO {table} (Username, Password, First_Name, Last_Name, Email)
+                VALUES (?, ?, ?, ?, ?)
+            """, (entries['Username'].get(), entries['Password'].get(),
+                 entries['First Name'].get(), entries['Last Name'].get(),
+                 entries['Email'].get()))
+            
+            conn.commit()
+            messagebox.showinfo("Success", f"{user_type} added successfully!")
+            
+            # Clear entries
+            for entry in entries.values():
+                entry.delete(0, 'end')
+                
+        except sqlite3.IntegrityError:
+            messagebox.showerror("Error", "Username already exists!")
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", f"Error adding user: {str(e)}")
+        finally:
+            if 'conn' in locals():
+                conn.close()
+
+    def create_course(self, entries, dialog):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Validate inputs
+            for field, entry in entries.items():
+                if not entry.get():
+                    messagebox.showerror("Error", f"{field} cannot be empty!")
+                    return
+            
+            cursor.execute("""
+                INSERT INTO Courses (Title, Description, Duration, MaxEnrollment, InstructorID)
+                VALUES (?, ?, ?, ?, ?)
+            """, (entries['Title'].get(), entries['Description'].get(),
+                 int(entries['Duration (weeks)'].get()),
+                 int(entries['Max Enrollment'].get()),
+                 self.user_id))
+            
+            conn.commit()
+            messagebox.showinfo("Success", "Course created successfully!")
+            dialog.destroy()
+            
+        except ValueError:
+            messagebox.showerror("Error", "Duration and Max Enrollment must be numbers!")
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", f"Error creating course: {str(e)}")
+        finally:
+            if 'conn' in locals():
+                conn.close()
+
+    def load_available_courses(self, parent_frame):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Get courses not enrolled in by the student
+            cursor.execute("""
+                SELECT c.CourseID, c.Title, c.Description, i.First_Name, i.Last_Name,
+                       c.MaxEnrollment, COUNT(e.StudentID) as CurrentEnrollment
+                FROM Courses c
+                LEFT JOIN Enrollment e ON c.CourseID = e.CourseID
+                JOIN Instructors i ON c.InstructorID = i.InstructorID
+                WHERE c.CourseID NOT IN (
+                    SELECT CourseID FROM Enrollment WHERE StudentID = ?
+                )
+                GROUP BY c.CourseID
+                HAVING CurrentEnrollment < c.MaxEnrollment
+            """, (self.user_id,))
+            
+            courses = cursor.fetchall()
+            
+            for course in courses:
+                course_frame = ctk.CTkFrame(parent_frame)
+                course_frame.pack(pady=5, padx=5, fill='x')
+                
+                # Course title and instructor
+                title_label = ctk.CTkLabel(
+                    course_frame,
+                    text=f"{course[1]} (Instructor: {course[3]} {course[4]})",
+                    font=("Helvetica", 12, "bold")
+                )
+                title_label.pack(anchor='w')
+                
+                # Description
+                desc_label = ctk.CTkLabel(
+                    course_frame,
+                    text=f"Description: {course[2]}"
+                )
+                desc_label.pack(anchor='w')
+                
+                # Enrollment info
+                enrollment_label = ctk.CTkLabel(
+                    course_frame,
+                    text=f"Enrollment: {course[6]}/{course[5]}"
+                )
+                enrollment_label.pack(anchor='w')
+                
+                # Enroll button
+                enroll_btn = ctk.CTkButton(
+                    course_frame,
+                    text="Enroll",
+                    command=lambda cid=course[0]: self.enroll_in_course(cid)
+                )
+                enroll_btn.pack(pady=5)
+                
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", f"Error loading courses: {str(e)}")
+        finally:
+            if 'conn' in locals():
+                conn.close()
+
+    def enroll_in_course(self, course_id):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Check prerequisites
+            if not self.check_prerequisites(course_id):
+                messagebox.showerror("Error", "Prerequisites not met!")
+                return
+            
+            # Check if course is full
+            cursor.execute("""
+                SELECT c.MaxEnrollment, COUNT(e.StudentID) as CurrentEnrollment
+                FROM Courses c
+                LEFT JOIN Enrollment e ON c.CourseID = e.CourseID
+                WHERE c.CourseID = ?
+                GROUP BY c.CourseID
+            """, (course_id,))
+            
+            result = cursor.fetchone()
+            if result[1] >= result[0]:
+                messagebox.showerror("Error", "Course is full!")
+                return
+            
+            # Enroll student
+            cursor.execute("""
+                INSERT INTO Enrollment (StudentID, CourseID, EnrollmentDate)
+                VALUES (?, ?, ?)
+            """, (self.user_id, course_id, datetime.now().date()))
+            
+            conn.commit()
+            messagebox.showinfo("Success", "Enrolled successfully!")
+            
+        except sqlite3.IntegrityError:
+            messagebox.showerror("Error", "Already enrolled in this course!")
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", f"Error enrolling: {str(e)}")
+        finally:
+            if 'conn' in locals():
+                conn.close()
+
+    def check_prerequisites(self, course_id):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Get prerequisites for the course
+            cursor.execute("""
+                SELECT p.PrerequisiteCourseID
+                FROM Prerequisite p
+                WHERE p.CourseID = ?
+            """, (course_id,))
+            
+            prerequisites = cursor.fetchall()
+            
+            # Check if student has completed all prerequisites
+            for prereq in prerequisites:
+                cursor.execute("""
+                    SELECT 1
+                    FROM Enrollment e
+                    JOIN Performance p ON e.EnrollmentID = p.EnrollmentID
+                    WHERE e.StudentID = ? AND e.CourseID = ? AND p.FinalGrade >= 60
+                """, (self.user_id, prereq[0]))
+                
+                if not cursor.fetchone():
+                    return False
+                    
+            return True
+            
+        except sqlite3.Error:
+            return False
+        finally:
+            if 'conn' in locals():
+                conn.close()
+
+    def create_analytics_view(self, parent_frame):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Active Users Section
+            users_frame = ctk.CTkFrame(parent_frame)
+            users_frame.pack(pady=10, padx=10, fill='x')
+            
+            ctk.CTkLabel(users_frame, text="Active Users", font=("Helvetica", 16, "bold")).pack()
+            
+            # Count active students and instructors
+            cursor.execute("SELECT COUNT(*) FROM Students")
+            student_count = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM Instructors")
+            instructor_count = cursor.fetchone()[0]
+            
+            ctk.CTkLabel(users_frame, text=f"Total Students: {student_count}").pack()
+            ctk.CTkLabel(users_frame, text=f"Total Instructors: {instructor_count}").pack()
+            
+            # Course Statistics Section
+            courses_frame = ctk.CTkFrame(parent_frame)
+            courses_frame.pack(pady=10, padx=10, fill='x')
+            
+            ctk.CTkLabel(courses_frame, text="Course Statistics", font=("Helvetica", 16, "bold")).pack()
+            
+            # Get popular courses
+            cursor.execute("""
+                SELECT c.Title, COUNT(e.StudentID) as Enrollment
+                FROM Courses c
+                LEFT JOIN Enrollment e ON c.CourseID = e.CourseID
+                GROUP BY c.CourseID
+                ORDER BY Enrollment DESC
+                LIMIT 5
+            """)
+            
+            popular_courses = cursor.fetchall()
+            
+            ctk.CTkLabel(courses_frame, text="Most Popular Courses:").pack()
+            for course in popular_courses:
+                ctk.CTkLabel(courses_frame, text=f"{course[0]}: {course[1]} students").pack()
+            
+            # Performance Metrics Section
+            performance_frame = ctk.CTkFrame(parent_frame)
+            performance_frame.pack(pady=10, padx=10, fill='x')
+            
+            ctk.CTkLabel(performance_frame, text="Performance Metrics", 
+                        font=("Helvetica", 16, "bold")).pack()
+            
+            # Calculate average grades
+            cursor.execute("""
+                SELECT AVG(p.FinalGrade) as AvgGrade
+                FROM Performance p
+            """)
+            
+            avg_grade = cursor.fetchone()[0]
+            if avg_grade:
+                ctk.CTkLabel(performance_frame, 
+                            text=f"Average Grade: {avg_grade:.2f}%").pack()
+            
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", f"Error loading analytics: {str(e)}")
+        finally:
+            if 'conn' in locals():
+                conn.close()
+
+    def create_assessment(self, course_id):
+        dialog = ctk.CTkToplevel(self.menu_window)
+        dialog.title("Create Assessment")
+        dialog.geometry("500x400")
+        
+        fields = {
+            'Title': ctk.CTkEntry(dialog),
+            'Description': ctk.CTkEntry(dialog),
+            'Due Date': ctk.CTkEntry(dialog),
+            'Max Score': ctk.CTkEntry(dialog)
+        }
+        
+        for field, entry in fields.items():
+            frame = ctk.CTkFrame(dialog)
+            frame.pack(pady=5)
+            ctk.CTkLabel(frame, text=f"{field}:").pack(side='left', padx=5)
+            entry.pack(side='left', padx=5)
+            
+        def save_assessment():
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                    INSERT INTO Assessments (CourseID, Title, Description, DueDate, MaxScore)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (course_id, fields['Title'].get(), fields['Description'].get(),
+                     fields['Due Date'].get(), float(fields['Max Score'].get())))
+                
+                conn.commit()
+                messagebox.showinfo("Success", "Assessment created successfully!")
+                dialog.destroy()
+                
+            except ValueError:
+                messagebox.showerror("Error", "Max Score must be a number!")
+            except sqlite3.Error as e:
+                messagebox.showerror("Database Error", f"Error creating assessment: {str(e)}")
+            finally:
+                if 'conn' in locals():
+                    conn.close()
+                    
+        save_btn = ctk.CTkButton(dialog, text="Create Assessment", command=save_assessment)
+        save_btn.pack(pady=10)
+        
+    def load_enrolled_courses(self, parent_frame):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT c.CourseID, c.Title, i.First_Name, i.Last_Name,
+                       c.Description, p.FinalGrade
+                FROM Courses c
+                JOIN Enrollment e ON c.CourseID = e.CourseID
+                JOIN Instructors i ON c.InstructorID = i.InstructorID
+                LEFT JOIN Performance p ON e.EnrollmentID = p.EnrollmentID
+                WHERE e.StudentID = ?
+            """, (self.user_id,))
+            
+            courses = cursor.fetchall()
+            
+            for course in courses:
+                course_frame = ctk.CTkFrame(parent_frame)
+                course_frame.pack(pady=5, padx=5, fill='x')
+                
+                # Course title and instructor
+                title_label = ctk.CTkLabel(
+                    course_frame,
+                    text=f"{course[1]} (Instructor: {course[2]} {course[3]})",
+                    font=("Helvetica", 12, "bold")
+                )
+                title_label.pack(anchor='w')
+                
+                # Description
+                desc_label = ctk.CTkLabel(
+                    course_frame,
+                    text=f"Description: {course[4]}"
+                )
+                desc_label.pack(anchor='w')
+                
+                # Grade if available
+                if course[5] is not None:
+                    grade_label = ctk.CTkLabel(
+                        course_frame,
+                        text=f"Grade: {course[5]}%"
+                    )
+                    grade_label.pack(anchor='w')
+                
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", f"Error loading enrolled courses: {str(e)}")
+        finally:
+            if 'conn' in locals():
+                conn.close()
+                
+    def load_student_grades(self, parent_frame):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT c.Title, a.Title, s.Score, a.MaxScore,
+                       p.FinalGrade
+                FROM Courses c
+                JOIN Enrollment e ON c.CourseID = e.CourseID
+                JOIN Performance p ON e.EnrollmentID = p.EnrollmentID
+                LEFT JOIN Submissions s ON e.EnrollmentID = s.EnrollmentID
+                LEFT JOIN Assessments a ON s.AssessmentID = a.AssessmentID
+                WHERE e.StudentID = ?
+                ORDER BY c.Title, a.Title
+            """, (self.user_id,))
+            
+            grades = cursor.fetchall()
+            
+            current_course = None
+            course_frame = None
+            
+            for grade in grades:
+                if current_course != grade[0]:
+                    current_course = grade[0]
+                    course_frame = ctk.CTkFrame(parent_frame)
+                    course_frame.pack(pady=5, padx=5, fill='x')
+                    
+                    # Course title
+                    ctk.CTkLabel(
+                        course_frame,
+                        text=f"Course: {grade[0]}",
+                        font=("Helvetica", 12, "bold")
+                    ).pack(anchor='w')
+                    
+                    # Final grade
+                    if grade[4] is not None:
+                        ctk.CTkLabel(
+                            course_frame,
+                            text=f"Final Grade: {grade[4]}%"
+                        ).pack(anchor='w')
+                
+                # Assessment grades
+                if grade[1] is not None:
+                    assessment_frame = ctk.CTkFrame(course_frame)
+                    assessment_frame.pack(pady=2, padx=20, fill='x')
+                    
+                    score_text = f"{grade[1]}: {grade[2]}/{grade[3]}"
+                    if grade[3] > 0:
+                        percentage = (grade[2] / grade[3]) * 100
+                        score_text += f" ({percentage:.1f}%)"
+                        
+                    ctk.CTkLabel(
+                        assessment_frame,
+                        text=score_text
+                    ).pack(anchor='w')
+                    
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", f"Error loading grades: {str(e)}")
+        finally:
+            if 'conn' in locals():
+                conn.close()
+                
+    def load_student_assessments(self, parent_frame):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT c.Title as CourseTitle, a.Title, a.Description,
+                       a.DueDate, a.MaxScore, s.Score, s.SubmissionDate,
+                       a.AssessmentID, s.SubmissionID
+                FROM Courses c
+                JOIN Enrollment e ON c.CourseID = e.CourseID
+                JOIN Assessments a ON c.CourseID = a.CourseID
+                LEFT JOIN Submissions s ON a.AssessmentID = s.AssessmentID 
+                    AND e.EnrollmentID = s.EnrollmentID
+                WHERE e.StudentID = ?
+                ORDER BY a.DueDate DESC
+            """, (self.user_id,))
+            
+            assessments = cursor.fetchall()
+            
+            for assessment in assessments:
+                assessment_frame = ctk.CTkFrame(parent_frame)
+                assessment_frame.pack(pady=5, padx=5, fill='x')
+                
+                # Course and assessment title
+                header_frame = ctk.CTkFrame(assessment_frame)
+                header_frame.pack(fill='x', padx=5, pady=5)
+                
+                ctk.CTkLabel(
+                    header_frame,
+                    text=f"{assessment[0]} - {assessment[1]}",
+                    font=("Helvetica", 12, "bold")
+                ).pack(side='left')
+                
+                # Due date with color coding
+                due_date = datetime.strptime(assessment[3], '%Y-%m-%d').date()
+                today = datetime.now().date()
+                
+                date_color = "green" if assessment[6] else (
+                    "red" if due_date < today else "orange"
+                )
+                
+                ctk.CTkLabel(
+                    header_frame,
+                    text=f"Due: {assessment[3]}",
+                    text_color=date_color
+                ).pack(side='right')
+                
+                # Description
+                ctk.CTkLabel(
+                    assessment_frame,
+                    text=f"Description: {assessment[2]}"
+                ).pack(anchor='w', padx=5)
+                
+                # Score if submitted
+                if assessment[5] is not None:
+                    score_frame = ctk.CTkFrame(assessment_frame)
+                    score_frame.pack(fill='x', padx=5, pady=5)
+                    
+                    score_text = f"Score: {assessment[5]}/{assessment[4]}"
+                    if assessment[4] > 0:
+                        percentage = (assessment[5] / assessment[4]) * 100
+                        score_text += f" ({percentage:.1f}%)"
+                        
+                    ctk.CTkLabel(
+                        score_frame,
+                        text=score_text
+                    ).pack(side='left')
+                    
+                    ctk.CTkLabel(
+                        score_frame,
+                        text=f"Submitted: {assessment[6]}"
+                    ).pack(side='right')
+                    
+                # Submit button if not submitted and not past due date
+                elif due_date >= today:
+                    submit_btn = ctk.CTkButton(
+                        assessment_frame,
+                        text="Submit Assessment",
+                        command=lambda aid=assessment[7]: self.show_submission_dialog(aid)
+                    )
+                    submit_btn.pack(pady=5)
+                    
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", f"Error loading assessments: {str(e)}")
+        finally:
+            if 'conn' in locals():
+                conn.close()
+                
+    def show_submission_dialog(self, assessment_id):
+        dialog = ctk.CTkToplevel(self.menu_window)
+        dialog.title("Submit Assessment")
+        dialog.geometry("500x300")
+        
+        # Answer text area
+        answer_label = ctk.CTkLabel(dialog, text="Your Answer:")
+        answer_label.pack(pady=5)
+        
+        answer_text = ctk.CTkTextbox(dialog, height=150)
+        answer_text.pack(pady=5, padx=10, fill='both', expand=True)
+        
+        def submit_assessment():
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                
+                # Get enrollment ID
+                cursor.execute("""
+                    SELECT e.EnrollmentID
+                    FROM Enrollment e
+                    JOIN Assessments a ON e.CourseID = a.CourseID
+                    WHERE e.StudentID = ? AND a.AssessmentID = ?
+                """, (self.user_id, assessment_id))
+                
+                enrollment_id = cursor.fetchone()[0]
+                
+                # Insert submission
+                cursor.execute("""
+                    INSERT INTO Submissions (AssessmentID, EnrollmentID, 
+                                          SubmissionDate, Answer)
+                    VALUES (?, ?, ?, ?)
+                """, (assessment_id, enrollment_id, 
+                     datetime.now().date(), answer_text.get("1.0", "end-1c")))
+                
+                conn.commit()
+                messagebox.showinfo("Success", "Assessment submitted successfully!")
+                dialog.destroy()
+                
+                # Refresh assessments view
+                self.notebook.select(3)  # Select assessments tab
+                
+            except sqlite3.Error as e:
+                messagebox.showerror("Database Error", f"Error submitting assessment: {str(e)}")
+            finally:
+                if 'conn' in locals():
+                    conn.close()
+                    
+        submit_btn = ctk.CTkButton(dialog, text="Submit", command=submit_assessment)
+        submit_btn.pack(pady=10)
+        
     def run(self):
         self.root.mainloop()
 
