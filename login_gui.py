@@ -111,7 +111,6 @@ class LoginApp:
         
         # Center the window
         login_window.transient(self.root)
-        login_window.grab_set()
         
         # Username
         username_label = ctk.CTkLabel(login_window, text="Username:")
@@ -147,6 +146,15 @@ class LoginApp:
             command=verify_login
         )
         login_btn.pack(pady=20)
+        
+        # Wait for window to be visible before setting grab
+        def set_grab():
+            if login_window.winfo_exists():
+                login_window.grab_set()
+                login_window.focus_set()
+        
+        # Schedule grab_set after window is drawn
+        login_window.after(100, set_grab)
         
     def show_main_menu(self, user_type):
         # Create new window for the main menu
