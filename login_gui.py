@@ -1189,8 +1189,8 @@ class LoginApp:
                 FROM Courses c
                 JOIN Enrollment e ON c.CourseID = e.CourseID
                 JOIN Assessments a ON c.CourseID = a.CourseID
-                LEFT JOIN Submissions s ON e.EnrollmentID = s.EnrollmentID 
-                    AND a.AssessmentID = s.AssessmentID
+                LEFT JOIN Submissions s ON s.StudentID = e.StudentID 
+                    AND s.AssessmentID = a.AssessmentID
                 WHERE e.StudentID = ?
                 ORDER BY a.DueDate ASC
             """, (self.user_id,))
@@ -1244,7 +1244,7 @@ class LoginApp:
                     text=formatted_date
                 ).pack(side='left', expand=True, fill='x', padx=5)
                 
-                # Status
+                # Status with color coding
                 status_label = ctk.CTkLabel(
                     assessment_frame,
                     text=assessment[6]
@@ -1259,12 +1259,25 @@ class LoginApp:
                 else:
                     status_label.configure(text_color='orange')
                 
-                # Score/Max
-                score_text = f"{assessment[5] if assessment[5] is not None else '-'}/{assessment[4]}"
-                ctk.CTkLabel(
+                # Score/Max with color coding
+                score = assessment[5]
+                max_score = assessment[4]
+                score_text = f"{score if score is not None else '-'}/{max_score}"
+                score_label = ctk.CTkLabel(
                     assessment_frame,
                     text=score_text
-                ).pack(side='left', expand=True, fill='x', padx=5)
+                )
+                score_label.pack(side='left', expand=True, fill='x', padx=5)
+                
+                # Color code the score if it exists
+                if score is not None:
+                    percentage = (score / max_score) * 100
+                    if percentage >= 90:
+                        score_label.configure(text_color='green')
+                    elif percentage >= 70:
+                        score_label.configure(text_color='orange')
+                    else:
+                        score_label.configure(text_color='red')
                 
         except sqlite3.Error as e:
             messagebox.showerror("Database Error", f"Error loading assessments: {str(e)}")
