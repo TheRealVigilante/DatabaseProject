@@ -877,6 +877,78 @@ class LoginApp:
             if 'conn' in locals():
                 conn.close()
 
+    def load_grades(self, parent_frame):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT c.CourseName, p.TotalScore, p.Grade
+                FROM Performance p
+                JOIN Enrollment e ON p.StudentID = e.StudentID
+                JOIN Courses c ON e.CourseID = c.CourseID
+                WHERE p.StudentID = ?
+                ORDER BY c.CourseName
+            """, (self.user_id,))
+            
+            grades = cursor.fetchall()
+            
+            if not grades:
+                no_grades_label = ctk.CTkLabel(
+                    parent_frame,
+                    text="No grades available yet"
+                )
+                no_grades_label.pack(pady=20)
+                return
+            
+            # Create header
+            header_frame = ctk.CTkFrame(parent_frame)
+            header_frame.pack(fill='x', padx=5, pady=(0, 10))
+            
+            ctk.CTkLabel(
+                header_frame,
+                text="Course",
+                font=("Helvetica", 12, "bold")
+            ).pack(side='left', expand=True, fill='x', padx=5)
+            
+            ctk.CTkLabel(
+                header_frame,
+                text="Score",
+                font=("Helvetica", 12, "bold")
+            ).pack(side='left', expand=True, fill='x', padx=5)
+            
+            ctk.CTkLabel(
+                header_frame,
+                text="Grade",
+                font=("Helvetica", 12, "bold")
+            ).pack(side='left', expand=True, fill='x', padx=5)
+            
+            # Add grades
+            for grade in grades:
+                grade_frame = ctk.CTkFrame(parent_frame)
+                grade_frame.pack(fill='x', padx=5, pady=2)
+                
+                ctk.CTkLabel(
+                    grade_frame,
+                    text=grade[0]
+                ).pack(side='left', expand=True, fill='x', padx=5)
+                
+                ctk.CTkLabel(
+                    grade_frame,
+                    text=str(grade[1]) if grade[1] is not None else "N/A"
+                ).pack(side='left', expand=True, fill='x', padx=5)
+                
+                ctk.CTkLabel(
+                    grade_frame,
+                    text=grade[2] if grade[2] is not None else "N/A"
+                ).pack(side='left', expand=True, fill='x', padx=5)
+                
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", f"Error loading grades: {str(e)}")
+        finally:
+            if 'conn' in locals():
+                conn.close()
+
     def load_enrolled_courses(self, parent_frame):
         try:
             conn = sqlite3.connect(self.db_path)
@@ -888,9 +960,10 @@ class LoginApp:
                 FROM Courses c
                 JOIN Enrollment e ON c.CourseID = e.CourseID
                 JOIN Instructors i ON c.InstructorID = i.InstructorID
-                LEFT JOIN Performance p ON e.EnrollmentID = p.EnrollmentID
+                LEFT JOIN Performance p ON p.StudentID = e.StudentID 
+                    AND p.StudentID = ?
                 WHERE e.StudentID = ?
-            """, (self.user_id,))
+            """, (self.user_id, self.user_id))
             
             courses = cursor.fetchall()
             
@@ -937,7 +1010,7 @@ class LoginApp:
             cursor = conn.cursor()
             
             cursor.execute("""
-                SELECT c.Title, a.Title, s.Score, a.MaxScore,
+                SELECT c.CourseName, a.Title, s.Score, a.MaxScore,
                        p.FinalGrade
                 FROM Courses c
                 JOIN Enrollment e ON c.CourseID = e.CourseID
@@ -945,7 +1018,7 @@ class LoginApp:
                 LEFT JOIN Submissions s ON e.EnrollmentID = s.EnrollmentID
                 LEFT JOIN Assessments a ON s.AssessmentID = a.AssessmentID
                 WHERE e.StudentID = ?
-                ORDER BY c.Title, a.Title
+                ORDER BY c.CourseName, a.Title
             """, (self.user_id,))
             
             grades = cursor.fetchall()
