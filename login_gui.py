@@ -1088,14 +1088,14 @@ class LoginApp:
             cursor.execute("""
                 SELECT c.Title as CourseTitle, a.Title, a.Description,
                        a.DueDate, a.MaxScore, s.Score, s.SubmissionDate,
-                       a.AssessmentID, s.SubmissionID
+                       a.AssessmentID
                 FROM Courses c
                 JOIN Enrollment e ON c.CourseID = e.CourseID
                 JOIN Assessments a ON c.CourseID = a.CourseID
-                LEFT JOIN Submissions s ON a.AssessmentID = s.AssessmentID 
-                    AND e.EnrollmentID = s.EnrollmentID
+                LEFT JOIN Submissions s ON s.StudentID = e.StudentID 
+                    AND s.AssessmentID = a.AssessmentID
                 WHERE e.StudentID = ?
-                ORDER BY a.DueDate DESC
+                ORDER BY a.DueDate ASC
             """, (self.user_id,))
             
             assessments = cursor.fetchall()
@@ -1115,8 +1115,9 @@ class LoginApp:
                 ).pack(side='left')
                 
                 # Due date with color coding
-                due_date = datetime.strptime(assessment[3], '%Y-%m-%d').date()
-                today = datetime.now().date()
+                due_date = datetime.strptime(assessment[3], '%Y-%m-%d %H:%M:%S')
+                formatted_date = due_date.strftime('%Y-%m-%d %H:%M')
+                today = datetime.now()
                 
                 date_color = "green" if assessment[6] else (
                     "red" if due_date < today else "orange"
@@ -1124,34 +1125,46 @@ class LoginApp:
                 
                 ctk.CTkLabel(
                     header_frame,
-                    text=f"Due: {assessment[3]}",
+                    text=f"Due: {formatted_date}",
                     text_color=date_color
                 ).pack(side='right')
                 
                 # Description
-                ctk.CTkLabel(
-                    assessment_frame,
-                    text=f"Description: {assessment[2]}"
-                ).pack(anchor='w', padx=5)
+                if assessment[2]:
+                    ctk.CTkLabel(
+                        assessment_frame,
+                        text=f"Description: {assessment[2]}"
+                    ).pack(anchor='w', padx=5)
                 
                 # Score if submitted
                 if assessment[5] is not None:
                     score_frame = ctk.CTkFrame(assessment_frame)
                     score_frame.pack(fill='x', padx=5, pady=5)
                     
-                    score_text = f"Score: {assessment[5]}/{assessment[4]}"
-                    if assessment[4] > 0:
-                        percentage = (assessment[5] / assessment[4]) * 100
-                        score_text += f" ({percentage:.1f}%)"
-                        
-                    ctk.CTkLabel(
+                    score = assessment[5]
+                    max_score = assessment[4]
+                    percentage = (score / max_score) * 100 if max_score > 0 else 0
+                    
+                    score_text = f"Score: {score}/{max_score} ({percentage:.1f}%)"
+                    score_label = ctk.CTkLabel(
                         score_frame,
                         text=score_text
-                    ).pack(side='left')
+                    )
+                    score_label.pack(side='left')
                     
+                    # Color code the score
+                    if percentage >= 90:
+                        score_label.configure(text_color='green')
+                    elif percentage >= 70:
+                        score_label.configure(text_color='orange')
+                    else:
+                        score_label.configure(text_color='red')
+                    
+                    submission_date = datetime.strptime(assessment[6], '%Y-%m-%d %H:%M:%S')
+                    formatted_submission = submission_date.strftime('%Y-%m-%d %H:%M')
                     ctk.CTkLabel(
                         score_frame,
-                        text=f"Submitted: {assessment[6]}"
+                        text=f"Submitted: {formatted_submission}"
                     ).pack(side='right')
                     
                 # Submit button if not submitted and not past due date
@@ -1162,7 +1175,7 @@ class LoginApp:
                         command=lambda aid=assessment[7]: self.show_submission_dialog(aid)
                     )
                     submit_btn.pack(pady=5)
-                    
+                
         except sqlite3.Error as e:
             messagebox.showerror("Database Error", f"Error loading assessments: {str(e)}")
         finally:
@@ -1175,17 +1188,9 @@ class LoginApp:
             cursor = conn.cursor()
             
             cursor.execute("""
-                SELECT c.CourseName, a.Title, a.Description, a.DueDate, a.MaxScore,
-                       CASE 
-                           WHEN s.Score IS NOT NULL THEN s.Score
-                           WHEN DATETIME('now') > a.DueDate THEN 0
-                           ELSE NULL
-                       END as Score,
-                       CASE 
-                           WHEN s.Score IS NOT NULL THEN 'Submitted'
-                           WHEN DATETIME('now') > a.DueDate THEN 'Past Due'
-                           ELSE 'Pending'
-                       END as Status
+                SELECT c.Title as CourseTitle, a.Title, a.Description,
+                       a.DueDate, a.MaxScore, s.Score, s.SubmissionDate,
+                       a.AssessmentID
                 FROM Courses c
                 JOIN Enrollment e ON c.CourseID = e.CourseID
                 JOIN Assessments a ON c.CourseID = a.CourseID
@@ -1247,15 +1252,13 @@ class LoginApp:
                 # Status with color coding
                 status_label = ctk.CTkLabel(
                     assessment_frame,
-                    text=assessment[6]
+                    text="Submitted" if assessment[6] else "Not submitted"
                 )
                 status_label.pack(side='left', expand=True, fill='x', padx=5)
                 
                 # Color code the status
-                if assessment[6] == 'Submitted':
+                if assessment[6]:
                     status_label.configure(text_color='green')
-                elif assessment[6] == 'Past Due':
-                    status_label.configure(text_color='red')
                 else:
                     status_label.configure(text_color='orange')
                 
