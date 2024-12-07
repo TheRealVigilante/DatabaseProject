@@ -70,7 +70,8 @@ class LoginApp:
             
             elif user_type == "Instructor":
                 cursor.execute("""
-                    SELECT InstructorID, First_Name, Last_Name 
+                    SELECT InstructorID, First_Name, Last_Name, Email, 
+                           PhoneNumber, HireDate, Specialization
                     FROM Instructors 
                     WHERE Username = ? AND Password = ?
                 """, (username, password))
@@ -79,11 +80,21 @@ class LoginApp:
                 if result:
                     self.user_id = result[0]
                     self.user_name = f"{result[1]} {result[2]}"
+                    self.user_details = {
+                        'First Name': result[1],
+                        'Last Name': result[2],
+                        'Email': result[3],
+                        'Phone Number': result[4],
+                        'Hire Date': result[5],
+                        'Specialization': result[6]
+                    }
                     return True
                     
             elif user_type == "Student":
                 cursor.execute("""
-                    SELECT StudentID, First_Name, Last_Name 
+                    SELECT StudentID, First_Name, Last_Name, Email, 
+                           PhoneNumber, EnrollmentDate, DateOfBirth, 
+                           Address
                     FROM Students 
                     WHERE Username = ? AND Password = ?
                 """, (username, password))
@@ -92,6 +103,15 @@ class LoginApp:
                 if result:
                     self.user_id = result[0]
                     self.user_name = f"{result[1]} {result[2]}"
+                    self.user_details = {
+                        'First Name': result[1],
+                        'Last Name': result[2],
+                        'Email': result[3],
+                        'Phone Number': result[4],
+                        'Enrollment Date': result[5],
+                        'Date of Birth': result[6],
+                        'Address': result[7]
+                    }
                     return True
                     
             return False
@@ -288,43 +308,222 @@ class LoginApp:
         self.load_student_assessments(assessments_scroll)
         
     def create_profile_view(self, parent_frame):
-        fields = ['Phone Number', 'Address', 'Email']
+        # Create a main profile frame
+        main_profile_frame = ctk.CTkFrame(parent_frame)
+        main_profile_frame.pack(expand=True, fill='both', padx=20, pady=20)
+        
+        # Personal Information Section
+        personal_info_frame = ctk.CTkFrame(main_profile_frame)
+        personal_info_frame.pack(fill='x', pady=(0, 20))
+        
+        ctk.CTkLabel(
+            personal_info_frame,
+            text="Personal Information",
+            font=("Helvetica", 16, "bold")
+        ).pack(pady=10)
+        
+        # Create two columns for better layout
+        left_frame = ctk.CTkFrame(personal_info_frame)
+        left_frame.pack(side='left', expand=True, fill='both', padx=10)
+        
+        right_frame = ctk.CTkFrame(personal_info_frame)
+        right_frame.pack(side='right', expand=True, fill='both', padx=10)
+        
+        # Display all user details
         entries = {}
+        column_frames = [left_frame, right_frame]
+        current_frame = 0
         
-        for field in fields:
-            frame = ctk.CTkFrame(parent_frame)
-            frame.pack(pady=5)
-            ctk.CTkLabel(frame, text=f"{field}:").pack(side='left', padx=5)
-            entries[field] = ctk.CTkEntry(frame)
-            entries[field].pack(side='left', padx=5)
+        for field, value in self.user_details.items():
+            frame = ctk.CTkFrame(column_frames[current_frame])
+            frame.pack(pady=5, fill='x')
             
-        # Load current profile data
-        self.load_profile_data(entries)
+            ctk.CTkLabel(frame, text=f"{field}:", anchor='w').pack(side='left', padx=5)
+            
+            if field in ['Phone Number', 'Email', 'Address']:
+                # These fields are editable
+                entry = ctk.CTkEntry(frame)
+                entry.insert(0, value if value else '')
+                entry.pack(side='left', padx=5, fill='x', expand=True)
+                entries[field] = entry
+            else:
+                # Read-only fields
+                ctk.CTkLabel(frame, text=str(value) if value else 'N/A').pack(side='left', padx=5)
+            
+            # Switch between columns
+            current_frame = (current_frame + 1) % 2
         
-        # Save button
-        save_btn = ctk.CTkButton(parent_frame, text="Save Changes",
-                                command=lambda: self.save_profile_changes(entries))
-        save_btn.pack(pady=10)
+        # Statistics Section (if student)
+        if hasattr(self, 'student_id'):
+            self.create_student_statistics(main_profile_frame)
         
+        # Course Statistics Section (if instructor)
+        if hasattr(self, 'instructor_id'):
+            self.create_instructor_statistics(main_profile_frame)
+        
+        # Save button for editable fields
+        if entries:
+            save_btn = ctk.CTkButton(
+                main_profile_frame,
+                text="Save Changes",
+                command=lambda: self.save_profile_changes(entries)
+            )
+            save_btn.pack(pady=20)
+            
+    def create_student_statistics(self, parent_frame):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            stats_frame = ctk.CTkFrame(parent_frame)
+            stats_frame.pack(fill='x', pady=20)
+            
+            ctk.CTkLabel(
+                stats_frame,
+                text="Academic Statistics",
+                font=("Helvetica", 16, "bold")
+            ).pack(pady=10)
+            
+            # Get total courses enrolled
+            cursor.execute("""
+                SELECT COUNT(*), AVG(p.FinalGrade)
+                FROM Enrollment e
+                LEFT JOIN Performance p ON e.EnrollmentID = p.EnrollmentID
+                WHERE e.StudentID = ?
+            """, (self.user_id,))
+            
+            total_courses, avg_grade = cursor.fetchone()
+            
+            stats_text = f"Total Courses Enrolled: {total_courses}\n"
+            if avg_grade:
+                stats_text += f"Average Grade: {avg_grade:.2f}%\n"
+            
+            # Get completed courses
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM Enrollment e
+                JOIN Performance p ON e.EnrollmentID = p.EnrollmentID
+                WHERE e.StudentID = ? AND p.FinalGrade >= 60
+            """, (self.user_id,))
+            
+            completed_courses = cursor.fetchone()[0]
+            stats_text += f"Completed Courses: {completed_courses}"
+            
+            ctk.CTkLabel(stats_frame, text=stats_text).pack(pady=5)
+            
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", f"Error loading statistics: {str(e)}")
+        finally:
+            if 'conn' in locals():
+                conn.close()
+                
+    def create_instructor_statistics(self, parent_frame):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            stats_frame = ctk.CTkFrame(parent_frame)
+            stats_frame.pack(fill='x', pady=20)
+            
+            ctk.CTkLabel(
+                stats_frame,
+                text="Teaching Statistics",
+                font=("Helvetica", 16, "bold")
+            ).pack(pady=10)
+            
+            # Get total courses teaching
+            cursor.execute("""
+                SELECT COUNT(*) as TotalCourses,
+                       COUNT(DISTINCT e.StudentID) as TotalStudents,
+                       AVG(p.FinalGrade) as AvgGrade
+                FROM Courses c
+                LEFT JOIN Enrollment e ON c.CourseID = e.CourseID
+                LEFT JOIN Performance p ON e.EnrollmentID = p.EnrollmentID
+                WHERE c.InstructorID = ?
+            """, (self.user_id,))
+            
+            total_courses, total_students, avg_grade = cursor.fetchone()
+            
+            stats_text = f"Total Courses Teaching: {total_courses}\n"
+            stats_text += f"Total Students: {total_students or 0}\n"
+            if avg_grade:
+                stats_text += f"Average Student Grade: {avg_grade:.2f}%"
+            
+            ctk.CTkLabel(stats_frame, text=stats_text).pack(pady=5)
+            
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", f"Error loading statistics: {str(e)}")
+        finally:
+            if 'conn' in locals():
+                conn.close()
+                
     def create_analytics_view(self, parent_frame):
-        # Active Users Section
-        users_frame = ctk.CTkFrame(parent_frame)
-        users_frame.pack(pady=10, padx=10, fill='x')
-        
-        ctk.CTkLabel(users_frame, text="Active Users", font=("Helvetica", 16)).pack()
-        
-        # Course Statistics Section
-        courses_frame = ctk.CTkFrame(parent_frame)
-        courses_frame.pack(pady=10, padx=10, fill='x')
-        
-        ctk.CTkLabel(courses_frame, text="Course Statistics", font=("Helvetica", 16)).pack()
-        
-        # Performance Metrics Section
-        performance_frame = ctk.CTkFrame(parent_frame)
-        performance_frame.pack(pady=10, padx=10, fill='x')
-        
-        ctk.CTkLabel(performance_frame, text="Performance Metrics", font=("Helvetica", 16)).pack()
-        
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Active Users Section
+            users_frame = ctk.CTkFrame(parent_frame)
+            users_frame.pack(pady=10, padx=10, fill='x')
+            
+            ctk.CTkLabel(users_frame, text="Active Users", font=("Helvetica", 16, "bold")).pack()
+            
+            # Count active students and instructors
+            cursor.execute("SELECT COUNT(*) FROM Students")
+            student_count = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM Instructors")
+            instructor_count = cursor.fetchone()[0]
+            
+            ctk.CTkLabel(users_frame, text=f"Total Students: {student_count}").pack()
+            ctk.CTkLabel(users_frame, text=f"Total Instructors: {instructor_count}").pack()
+            
+            # Course Statistics Section
+            courses_frame = ctk.CTkFrame(parent_frame)
+            courses_frame.pack(pady=10, padx=10, fill='x')
+            
+            ctk.CTkLabel(courses_frame, text="Course Statistics", font=("Helvetica", 16, "bold")).pack()
+            
+            # Get popular courses
+            cursor.execute("""
+                SELECT c.Title, COUNT(e.StudentID) as Enrollment
+                FROM Courses c
+                LEFT JOIN Enrollment e ON c.CourseID = e.CourseID
+                GROUP BY c.CourseID
+                ORDER BY Enrollment DESC
+                LIMIT 5
+            """)
+            
+            popular_courses = cursor.fetchall()
+            
+            ctk.CTkLabel(courses_frame, text="Most Popular Courses:").pack()
+            for course in popular_courses:
+                ctk.CTkLabel(courses_frame, text=f"{course[0]}: {course[1]} students").pack()
+            
+            # Performance Metrics Section
+            performance_frame = ctk.CTkFrame(parent_frame)
+            performance_frame.pack(pady=10, padx=10, fill='x')
+            
+            ctk.CTkLabel(performance_frame, text="Performance Metrics", 
+                        font=("Helvetica", 16, "bold")).pack()
+            
+            # Calculate average grades
+            cursor.execute("""
+                SELECT AVG(p.FinalGrade) as AvgGrade
+                FROM Performance p
+            """)
+            
+            avg_grade = cursor.fetchone()[0]
+            if avg_grade:
+                ctk.CTkLabel(performance_frame, 
+                            text=f"Average Grade: {avg_grade:.2f}%").pack()
+            
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", f"Error loading analytics: {str(e)}")
+        finally:
+            if 'conn' in locals():
+                conn.close()
+
     def show_create_course_dialog(self):
         dialog = ctk.CTkToplevel(self.menu_window)
         dialog.title("Create New Course")
