@@ -1086,7 +1086,7 @@ class LoginApp:
             cursor = conn.cursor()
             
             cursor.execute("""
-                SELECT c.CourseName, a.Title, a.Description,
+                SELECT c.CourseName, a.Title, a.Type,
                        a.DueDate, a.MaxScore, s.Score, s.SubmissionDate,
                        a.AssessmentID
                 FROM Courses c
@@ -1129,11 +1129,11 @@ class LoginApp:
                     text_color=date_color
                 ).pack(side='right')
                 
-                # Description
+                # Assessment type
                 if assessment[2]:
                     ctk.CTkLabel(
                         assessment_frame,
-                        text=f"Description: {assessment[2]}"
+                        text=f"Type: {assessment[2]}"
                     ).pack(anchor='w', padx=5)
                 
                 # Score if submitted
@@ -1188,7 +1188,7 @@ class LoginApp:
             cursor = conn.cursor()
             
             cursor.execute("""
-                SELECT c.CourseName, a.Title, a.Description,
+                SELECT c.CourseName, a.Title, a.Type,
                        a.DueDate, a.MaxScore, s.Score, s.SubmissionDate,
                        a.AssessmentID
                 FROM Courses c
