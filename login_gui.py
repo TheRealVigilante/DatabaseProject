@@ -1086,7 +1086,7 @@ class LoginApp:
             cursor = conn.cursor()
             
             cursor.execute("""
-                SELECT c.Title as CourseTitle, a.Title, a.Description,
+                SELECT c.CourseName, a.Title, a.Description,
                        a.DueDate, a.MaxScore, s.Score, s.SubmissionDate,
                        a.AssessmentID
                 FROM Courses c
