@@ -130,6 +130,3 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Special thanks to domain experts and database development professionals who provided valuable insights
 - CustomTkinter community for the modern GUI framework
 - SQLite team for the reliable database engine
-
-## Project Status
-This project is actively maintained and updated regularly with new features and improvements.
