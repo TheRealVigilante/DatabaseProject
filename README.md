@@ -62,7 +62,7 @@ The system uses a normalized relational database with tables for:
 
 1. Clone the repository:
 ```bash
-git clone [https://github.com/TheRealVigilante/DatabaseProject]
+git clone https://github.com/TheRealVigilante/DatabaseProject
 ```
 
 2. Install required dependencies:
@@ -130,9 +130,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Special thanks to domain experts and database development professionals who provided valuable insights
 - CustomTkinter community for the modern GUI framework
 - SQLite team for the reliable database engine
-
-## Support
-For support, please contact [Your Contact Information]
 
 ## Project Status
 This project is actively maintained and updated regularly with new features and improvements.
