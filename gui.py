@@ -529,7 +529,7 @@ class LoginApp:
         dialog.title("Create New Course")
         dialog.geometry("500x400")
         
-        fields = ['Title', 'Description', 'Duration (weeks)', 'Max Enrollment']
+        fields = ['Title', 'Description', 'MaxEnrollment', 'StartDate', 'EndDate', 'PrerequisiteID', 'InstructorID']
         entries = {}
         
         for field in fields:
@@ -592,12 +592,21 @@ class LoginApp:
             table = "Students" if hasattr(self, 'student_id') else "Instructors"
             id_field = "StudentID" if hasattr(self, 'student_id') else "InstructorID"
             
-            cursor.execute(f"""
-                UPDATE {table}
-                SET PhoneNumber = ?, Address = ?, Email = ?
-                WHERE {id_field} = ?
-            """, (entries['Phone Number'].get(), entries['Address'].get(), 
-                 entries['Email'].get(), self.user_id))
+            # Prepare the SQL query based on the table type
+            if table == "Students":
+                cursor.execute(f"""
+                    UPDATE {table}
+                    SET PhoneNumber = ?, Address = ?, Email = ?
+                    WHERE {id_field} = ?
+                """, (entries['Phone Number'].get(), entries['Address'].get(), 
+                    entries['Email'].get(), self.user_id))
+            else:  # For Instructors, exclude Address
+                cursor.execute(f"""
+                    UPDATE {table}
+                    SET PhoneNumber = ?, Email = ?
+                    WHERE {id_field} = ?
+                """, (entries['Phone Number'].get(), 
+                    entries['Email'].get(), self.user_id))
             
             conn.commit()
             messagebox.showinfo("Success", "Profile updated successfully!")
@@ -655,19 +664,21 @@ class LoginApp:
                     return
             
             cursor.execute("""
-                INSERT INTO Courses (CourseName, Description, Duration, MaxEnrollment, InstructorID)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO Courses (CourseName, Description, MaxEnrollment, StartDate, EndDate, PrerequisiteID, InstructorID)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (entries['Title'].get(), entries['Description'].get(),
-                 int(entries['Duration (weeks)'].get()),
-                 int(entries['Max Enrollment'].get()),
-                 self.user_id))
+                int(entries['MaxEnrollment'].get()),
+                entries['StartDate'].get(),  # Ensure you have these entries in your GUI
+                entries['EndDate'].get(),    # Ensure you have these entries in your GUI
+                entries['PrerequisiteID'].get(),  # Ensure you have this entry in your GUI
+                self.user_id))  # Assuming the instructor creating the course is the logged-in user
             
             conn.commit()
             messagebox.showinfo("Success", "Course created successfully!")
             dialog.destroy()
             
         except ValueError:
-            messagebox.showerror("Error", "Duration and Max Enrollment must be numbers!")
+            messagebox.showerror("Error", "Max Enrollment must be a number!")
         except sqlite3.Error as e:
             messagebox.showerror("Database Error", f"Error creating course: {str(e)}")
         finally:
@@ -790,6 +801,10 @@ class LoginApp:
             
             prerequisites = cursor.fetchall()
             
+            # If there are no prerequisites, return True
+            if not prerequisites or 'NULL' in prerequisites or 'None' in prerequisites:
+                return True
+                
             # Check if student has completed all prerequisites
             for prereq in prerequisites:
                 cursor.execute("""
